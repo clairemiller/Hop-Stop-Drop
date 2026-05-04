@@ -21,15 +21,25 @@ clear; clc; close all;
 
 %% ---- PARAMETERS ----------------------------------------
 N        = 40;     % Grid size (N x N)
-T_steps  = 100;     % Number of time steps
-n_frogs  = 1;      % Number of frogs
+T_steps  = 300;     % Number of time steps
+deltaT   = 5;       % Time step (minutes)
+n_frogs  = 3;      % Number of frogs
+initial_temp = 10;    % Initial frog body temperature
 p_move   = 0.7;    % Probability of moving each step [0-1]
 n_seeds  = 20;     % Seeds per habitat (controls patch size)
 pause_t  = 0.10;   % Pause between frames
 % --------------------------------------------------------
 
+%% ---- MICROCLIMATE -----------------------------------------
+% Temperature profile using nichemapr given a location and month
+% latitude = -36.686844; longitude = 145.223311; month = "Jan";
+% [T_hab, ~, ~] = get_microclimate_nichemapr(latitude, longitude, month);
+
+% Temperature profile from a pre-processed file
+temperature_file = "data/microclimate_data-Jan.txt";
+T_hab = read_microclimate_file(temperature_file);
+
 %% ---- HABITATS -----------------------------------------
-T_hab     = [30, 28, 18, 12];             % Fixed temperature per habitat (C)
 hab_names = {'Rocks','Light Veg','Deep Veg','Pond'};
 C_hab     = [0.52 0.32 0.18;             % Rocks  - brown
              0.72 0.88 0.28;             % Light Veg   - yellow-green
@@ -71,7 +81,7 @@ fj = randi(N, 1, n_frogs);   % column of each frog
 
 %% ---- INITIAL INTERNAL TEMPERATURE ----------------------
 % To change the temperature logic -> see update_frog_temp()
-frog_temp = update_frog_temp(fi, fj, habitat, T_hab);
+frog_temp = ones(1,n_frogs).*initial_temp;
 
 %% ---- FIGURE (3 panels) ---------------------------------
 fig = figure('Name','Multiple Frogs – Internal Temperature', ...
@@ -89,7 +99,7 @@ for h = 1:4
     plot(ax1, nan, nan, 's', ...
         'MarkerFaceColor', C_hab(h,:), 'MarkerEdgeColor','none', ...
         'MarkerSize',12, ...
-        'DisplayName', sprintf('%s (%.0f C)', hab_names{h}, T_hab(h)));
+        'DisplayName', sprintf('%s', hab_names{h}));
 end
 legend(ax1,'Location','southoutside','TextColor','w', ...
        'Color',[0.18 0.18 0.22],'EdgeColor','none', ...
@@ -153,7 +163,7 @@ for k = 1:n_frogs
     ln_temp(k) = animatedline(ax3,'Color',frog_colors(k,:),'LineWidth',1.8);
 end
 xlim(ax3,[1 T_steps]);
-ylim(ax3,[min(T_hab)-3, max(T_hab)+3]);
+% ylim(ax3,[min(T_hab)-3, max(T_hab)+3]);
 xlabel(ax3,'Time step','Color','w','FontSize',10);
 ylabel(ax3,'Internal temperature (C)','Color','w','FontSize',10);
 title(ax3,'Internal temperature per frog', ...
@@ -163,10 +173,11 @@ ax3.XColor = 'w'; ax3.YColor = 'w';
 grid(ax3,'on'); ax3.GridColor = [0.35 0.35 0.35];
 % Reference lines for each habitat temperature
 for h = 1:4
-    yline(ax3, T_hab(h), '--', hab_names{h}, ...
-        'Color', [C_hab(h,:) 0.6], 'FontSize', 7, ...
-        'LabelHorizontalAlignment','left', ...
-        'LabelVerticalAlignment','bottom');
+    habitat_temp_profile = get_habitat_temp(T_hab, h, (1:T_steps).*5);
+    plot(ax3, 1:T_steps, habitat_temp_profile, '--', ...%hab_names{h}, ...
+        'Color', [C_hab(h,:) 0.6] )%'FontSize', 7, ...
+        % 'LabelHorizontalAlignment','left', ...
+        % 'LabelVerticalAlignment','bottom');
 end
 frog_leg = arrayfun(@(k) sprintf('Frog %d',k), 1:n_frogs, 'UniformOutput',false);
 legend(ax3, frog_leg,'TextColor','w','Color',[0.18 0.18 0.22], ...
@@ -178,6 +189,7 @@ fprintf('\nStarting simulation: %d frogs, %d steps\n\n', ...
 
 K = 0.5;
 for t = 1:T_steps
+    time_mins = t*deltaT;
     % -- Move each frog independently --
     for k = 1:n_frogs
         % 1. Identify the habitat and actual temperture of frog
@@ -239,7 +251,7 @@ for t = 1:T_steps
 
     % -- Update internal temperature --
     % All temperature logic is encapsulated in this function
-    frog_temp = update_frog_temp(fi, fj, habitat, T_hab);
+    frog_temp = update_frog_temp(fi, fj, habitat, T_hab, time_mins);
 
     % -- Count frogs per habitat --
     hab_actual = arrayfun(@(r,c) habitat(r,c), fi, fj);
@@ -292,12 +304,13 @@ end
 %
 %  CURRENT VERSION: T_internal = T_of_current_habitat
 % =========================================================
-function temp = update_frog_temp(fi, fj, habitat, T_hab)
+function temp = update_frog_temp(fi, fj, habitat, T_hab, time_mins)
     n = length(fi);
     temp = zeros(1, n);
     for k = 1:n
         h       = habitat(fi(k), fj(k));   % habitat type of frog k
-        temp(k) = T_hab(h);                % internal temp = habitat temp
+        habitat_temp = get_habitat_temp(T_hab, h, time_mins);
+        temp(k) = habitat_temp;                % internal temp = habitat temp for now
     end
 
     % --- FUTURE MODIFICATIONS: examples ---
@@ -309,6 +322,11 @@ function temp = update_frog_temp(fi, fj, habitat, T_hab)
     %
     % Individual variability:
     %   temp(k) = T_hab(h) + randn * sigma;
+end
+
+function env_temp = get_habitat_temp(T_hab, cell_habitat, time_mins)
+    time_24hour = mod(floor(time_mins/60), 24); % We want the hour of the day
+    env_temp = T_hab{string(cell_habitat), string(time_24hour)};
 end
 
 % Te = [30, 28, 18, 12];
