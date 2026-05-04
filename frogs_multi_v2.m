@@ -23,11 +23,15 @@ clear; clc; close all;
 N        = 40;     % Grid size (N x N)
 T_steps  = 300;     % Number of time steps
 deltaT   = 5;       % Time step (minutes)
+T0       = 0;      % Start time (minutes since midnight) of the simulation
+month    = "Jan";  % Month we are running the simulation in
 n_frogs  = 3;      % Number of frogs
 initial_temp = 10;    % Initial frog body temperature
 p_move   = 0.7;    % Probability of moving each step [0-1]
 n_seeds  = 20;     % Seeds per habitat (controls patch size)
 pause_t  = 0.10;   % Pause between frames
+
+k_const  = 0.05790; % Thermal constant of frog (1/minutes) - for update_temp
 % --------------------------------------------------------
 
 %% ---- MICROCLIMATE -----------------------------------------
@@ -36,7 +40,7 @@ pause_t  = 0.10;   % Pause between frames
 % [T_hab, ~, ~] = get_microclimate_nichemapr(latitude, longitude, month);
 
 % Temperature profile from a pre-processed file
-temperature_file = "data/microclimate_data-Jan.txt";
+temperature_file = "data/microclimate_data-" + month + ".txt";
 T_hab = read_microclimate_file(temperature_file);
 
 %% ---- HABITATS -----------------------------------------
@@ -78,10 +82,10 @@ end
 %% ---- INITIAL POSITIONS (random) ------------------------
 fi = randi(N, 1, n_frogs);   % row of each frog
 fj = randi(N, 1, n_frogs);   % column of each frog
+frog_hab = arrayfun(@(i,j) habitat(i,j), fi, fj); % Get the habitats
 
 %% ---- INITIAL INTERNAL TEMPERATURE ----------------------
-% To change the temperature logic -> see update_frog_temp()
-frog_temp = ones(1,n_frogs).*initial_temp;
+frog_temp = get_habitat_temp(T_hab, frog_hab, T0);
 
 %% ---- FIGURE (3 panels) ---------------------------------
 fig = figure('Name','Multiple Frogs – Internal Temperature', ...
@@ -189,11 +193,11 @@ fprintf('\nStarting simulation: %d frogs, %d steps\n\n', ...
 
 K = 0.5;
 for t = 1:T_steps
-    time_mins = t*deltaT;
+    time_mins = T0 + t*deltaT;
     % -- Move each frog independently --
     for k = 1:n_frogs
         % 1. Identify the habitat and actual temperture of frog
-        hab_actual = habitat(fi(k), fj(k));
+        hab_actual = frog_hab(k);
         T_actual = frog_temp(k);
         
         % 2. Probability of movement depending on the habitat
@@ -248,14 +252,15 @@ for t = 1:T_steps
             trail_c{k}(end+1) = fj(k);
         end
     
+    % -- Update habitat --
+    frog_hab = arrayfun(@(i,j) habitat(i,j), fi, fj);
 
     % -- Update internal temperature --
     % All temperature logic is encapsulated in this function
-    frog_temp = update_frog_temp(fi, fj, habitat, T_hab, time_mins);
+    frog_temp = update_temp(T_hab, frog_hab, frog_temp, k_const, time_mins, deltaT);
 
     % -- Count frogs per habitat --
-    hab_actual = arrayfun(@(r,c) habitat(r,c), fi, fj);
-    pop = arrayfun(@(h) sum(hab_actual==h), 1:4);
+    pop = arrayfun(@(h) sum(frog_hab==h), 1:4);
 
     % -- Update figure --
     for k = 1:n_frogs
@@ -296,61 +301,47 @@ end
 %
 % Inputs:
 %    fi, fj    - current positions (vectors 1 x n_frogs)
-%   habitat   - N x N matrix with habitat type (1-4)
-%   T_hab     - vector with temperature of each habitat
+%   H_frog     - 1 x n_frogs vector with habitat type of each frog (1-4)
+%   T_frog     - 1 x n_frogs vector with temperature of each frog
 %
 % Output:
 %   temp      - vector 1 x n_frogs with internal temperature
 %
-%  CURRENT VERSION: T_internal = T_of_current_habitat
 % =========================================================
-function temp = update_frog_temp(fi, fj, habitat, T_hab, time_mins)
-    n = length(fi);
-    temp = zeros(1, n);
-    for k = 1:n
-        h       = habitat(fi(k), fj(k));   % habitat type of frog k
-        habitat_temp = get_habitat_temp(T_hab, h, time_mins);
-        temp(k) = habitat_temp;                % internal temp = habitat temp for now
-    end
-
-    % --- FUTURE MODIFICATIONS: examples ---
-    % Thermal inertia (gradual adaptation to habitat):
-    %   temp(k) = alpha * prev_temp(k) + (1-alpha) * T_hab(h);
-    %
-    % Fixed metabolic heat:
-    %   temp(k) = T_hab(h) + metabolic_heat;
-    %
-    % Individual variability:
-    %   temp(k) = T_hab(h) + randn * sigma;
+function body_temp = update_temp(T_hab, H_frog, T_frog, k, time_mins, dt)
+    Te = get_habitat_temp(T_hab, H_frog, time_mins);
+    assert(isequal(size(Te), size(T_frog)), "Mismatched vectors in update_temp");
+    body_temp = Te + (T_frog-Te).*exp(-k*dt);
+    % n = length(fi);
+    % body_temp = zeros(1,n);
+    % for i = 1:n
+    %     h       = habitat(fi(i), fj(i));   % habitat type of frog i
+    %     Te = get_habitat_temp(T_hab, h, time_mins);
+    %     body_temp(i) = Te + (T_frog(i)-Te)*exp(-k*dt);
+    % end
 end
 
-function env_temp = get_habitat_temp(T_hab, cell_habitat, time_mins)
+%% =========================================================
+%  EXTERNAL TEMPERATURE OF HABITAT(S)
+%  -------------------------------------------------------
+%
+% Inputs:
+%   T_hab      - Table with a row of hourly temperatures per habitat type
+%   H_frog     - 1 x n_frogs vector with habitat type of each frog (1-4)
+%   time_mins  - The time in minutes (from midnight)
+%
+% Output:
+%   env_temp   - vector 1 x n_frogs with the external temperature for each
+%   frog
+%
+% =========================================================
+
+function env_temp = get_habitat_temp(T_hab, H_frog, time_mins)
     time_24hour = mod(floor(time_mins/60), 24); % We want the hour of the day
-    env_temp = T_hab{string(cell_habitat), string(time_24hour)};
+    env_temp = T_hab{string(H_frog), string(time_24hour)}'; % Return as row if array
 end
 
-% Te = [30, 28, 18, 12];
-% k = 0.05937; % Reciprocal of thermal constant tau
-% % Time settings
-% T_total = 10;
-% dt = 0.1;
-% t = 0:dt:T_total;
-% N = length(t) - 1;
-% % --- Random initial environment ---
-% idx0 = randi(4);
-% T0 = Te(idx0);
-% T = zeros(1, N+1);
-% T(1) = T0;
-% figure
-% % Time stepping
-% for i = 1:N
-% 
-%     % We can update it according to the movements. This is just for dummy 
-%     % code
-%     Te_current = Te(randi(4));
-% 
-%     T(i+1) = Te_current + (T(i) - Te_current)*exp(-k*dt);
-% end
+
 
 
 %% =========================================================
