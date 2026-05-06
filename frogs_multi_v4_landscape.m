@@ -227,18 +227,18 @@ for t = 1:T_steps
         end
         K = (1/(VTmax - VTmin))*log(2/p_min - 1);  % K form
         p_move = 1 / (1 + exp(-K*(T_actual - VTmax))) + 1 - 1 / (1 + exp(-K*(T_actual - VTmin)));
-        phi = 1 - sqrt(1 - p_move);
+        %phi = 1 - sqrt(1 - p_move);
 
         % 3. Random movement?
         c1 = rand();
         dr1 = 0;  dc1 = 0;
-        if c1 < phi/4
+        if c1 < p_min/4
             dc1 =  1;          % right
-        elseif c1 < phi/2
+        elseif c1 < p_min/2
             dr1 = -1;          % up
-        elseif c1 < 3*phi/4
+        elseif c1 < 3*p_min/4
             dc1 = -1;          % left
-        elseif c1 < phi
+        elseif c1 < p_min
             dr1 =  1;          % down
         end
         % Apply MOVE 1 with boundary check
@@ -248,7 +248,7 @@ for t = 1:T_steps
         end   
 
         % ================================================
-        %  MOVE 2 – Temperature-gradient biased (prob phi)
+        %  MOVE 2 – Temperature-gradient biased (prob p_move)
         %
         
         % Update actual habitat of frog
@@ -261,15 +261,15 @@ for t = 1:T_steps
         c2 = rand();
         dr2 = 0;  dc2 = 0;
 
-        if c2 < phi * Pr_r
+        if c2 < p_move * Pr_r
             dc2 =  1;                            % right
-        elseif (c2 >= phi * Pr_r) && (c2 < phi * (Pr_r + Pr_u))
+        elseif (c2 >= p_move * Pr_r) && (c2 < p_move * (Pr_r + Pr_u))
             dr2 = -1;                             % up
-        elseif (c2 >= phi * (Pr_r + Pr_u)) && (c2 < phi * (Pr_r + Pr_u + Pr_l))
+        elseif (c2 >= p_move * (Pr_r + Pr_u)) && (c2 < p_move * (Pr_r + Pr_u + Pr_l))
             dc2 = -1;                             % left
-        elseif (c2 >= phi * (Pr_r + Pr_u + Pr_l)) && (c2 < phi * (Pr_r + Pr_u + Pr_l + Pr_d))
+        elseif (c2 >= p_move * (Pr_r + Pr_u + Pr_l)) && (c2 < p_move * (Pr_r + Pr_u + Pr_l + Pr_d))
             dr2 =  1;                               % down
-        elseif (c2 >= phi) || (Pr_r == 0 && Pr_u == 0 && Pr_l == 0 && Pr_d == 0)
+        elseif (c2 >= p_move) || (Pr_r == 0 && Pr_u == 0 && Pr_l == 0 && Pr_d == 0)
             dr2 = 0;
         else
             dr2 = 0; dc2 = 0;
