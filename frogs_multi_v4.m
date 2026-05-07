@@ -16,19 +16,23 @@
 % =========================================================
 
 clear; clc; close all;
+output_filename = "output/output.mat";
+update_figure = false;
 
 %% ---- PARAMETERS ----------------------------------------
-N        = 40;     % Grid size (N x N)
-T_steps  = 300;     % Number of time steps
+N        = 100;     % Grid size (N x N)
+T_steps  = 4*24*60/5;     % Number of time steps
 deltaT   = 5;       % Time step (minutes)
 T0       = 0;      % Start time (minutes since midnight) of the simulation
-month    = "Jan";  % Month we are running the simulation in
-n_frogs  = 5;      % Number of frogs
-n_seeds  = 5;     % Seeds per habitat (controls patch size)
+month    = 'Jan';  % Month we are running the simulation in
+n_frogs  = 20;      % Number of frogs
+n_seeds  = 50;     % Seeds per habitat (controls patch size)
 pause_t  = 0.10;   % Pause between frames
 k_const  = 0.05790; % Thermal constant of frog (1/minutes) - for update_temp
 VTmax = 30; % Threshold of hot for cold
 VTmin = 20; % Threshold of cold for hot
+R_perc = 2;   % Perception radius (1=4 pixels, 2=12, 3=24, ...)
+              % pixels within Manhattan distance R form a diamond
 % --------------------------------------------------------
 
 %% ---- MICROCLIMATE -----------------------------------------
@@ -77,10 +81,10 @@ for ch = 1:3
 end
 
 %% ---- INITIAL POSITIONS (random) ------------------------
-fi = randi(N, 1, n_frogs);   % row of each frog
-fi(:) = 20;
-fj = randi(N, 1, n_frogs);   % column of each frog
-fj(:) = 20;
+% fi = randi(N, 1, n_frogs);   % row of each frog
+fi = ones(1, n_frogs)*(N/2);
+% fj = randi(N, 1, n_frogs);   % column of each frog
+fj = ones(1, n_frogs)*(N/2);
 frog_hab = arrayfun(@(i,j) habitat(i,j), fi, fj); % Get the initial habitat
 
 %% ---- INITIAL INTERNAL TEMPERATURE AND STATE ----------------------
@@ -199,8 +203,10 @@ legend(ax3, frog_leg,'TextColor','w','Color',[0.18 0.18 0.22], ...
 fprintf('\nStarting simulation: %d frogs, %d steps\n\n', ...
         n_frogs, T_steps);
 
-R_perc = 2;   % Perception radius (1=4 pixels, 2=12, 3=24, ...)
-              % pixels within Manhattan distance R form a diamond
+% Objects to store the outputs of interest (row: frog, column: time)
+output_habitats = zeros(n_frogs, T_steps);
+output_frog_temp = zeros(n_frogs, T_steps);
+output_locations = zeros(n_frogs, T_steps, 2); % extra dimension for x and y
 
 for t = 1:T_steps
     time_mins = T0 + t*deltaT;
@@ -298,25 +304,33 @@ for t = 1:T_steps
     % -- Count frogs per habitat --
     pop = arrayfun(@(h) sum(frog_hab==h), 1:4);
 
+    % -- Store outputs --
+    output_habitats(:,t) = frog_hab;
+    output_frog_temp(:,t) = frog_temp;
+    output_locations(:,t,1) = fi; % x
+    output_locations(:,t,2) = fj; % y
+
     % -- Update figure --
-    for k = 1:n_frogs
-        %set(h_frog(k),  'XData', fj(k), 'YData', fi(k));
-        set(h_frog(k), 'Position', [fj(k), fi(k), 0])
-        set(h_trail(k), 'XData', trail_c{k}, 'YData', trail_r{k});
-        set(h_tlabel(k), 'Position', [fj(k), fi(k)-1.3, 0], ...
-            'String', sprintf('%.0fC', frog_temp(k)));
-        addpoints(ln_temp(k), t, frog_temp(k));
+    if (update_figure)
+        for k = 1:n_frogs
+            %set(h_frog(k),  'XData', fj(k), 'YData', fi(k));
+            set(h_frog(k), 'Position', [fj(k), fi(k), 0])
+            set(h_trail(k), 'XData', trail_c{k}, 'YData', trail_r{k});
+            set(h_tlabel(k), 'Position', [fj(k), fi(k)-1.3, 0], ...
+                'String', sprintf('%.0fC', frog_temp(k)));
+            addpoints(ln_temp(k), t, frog_temp(k));
+        end
+    
+        set(txt_paso,'String', ...
+            sprintf('Step %d/%d  |  p_move=%.2f', t, T_steps, p_move));
+    
+        for h = 1:4
+            addpoints(ln_hab(h), t, pop(h));
+        end
+    
+        drawnow;
+        pause(pause_t)
     end
-
-    set(txt_paso,'String', ...
-        sprintf('Step %d/%d  |  p_move=%.2f', t, T_steps, p_move));
-
-    for h = 1:4
-        addpoints(ln_hab(h), t, pop(h));
-    end
-
-    drawnow;
-    pause(pause_t)
 
     end
 end
@@ -329,6 +343,13 @@ fprintf('%s\n', repmat('-',1,35));
 for k = 1:n_frogs
     fprintf('  %2d    %-16s   %.1f C\n', k, hab_names{hab_final(k)}, frog_temp(k));
 end
+
+% -- Save outputs --
+params = struct("deltaT", deltaT, "T0", T0, "month", {month}, ...
+    "habitat_labels", hab_names, "VTmax", VTmax, "VTmin", VTmin, "R_perc", R_perc);
+habitat_temp_profile_hourly = table2array(T_hab_table);
+save(output_filename, "habitat", "habitat_temp_profile_hourly", "params", ...
+    "output_habitats", "output_frog_temp", "output_locations");
 
 
 %% =========================================================
