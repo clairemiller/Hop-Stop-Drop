@@ -15,29 +15,31 @@
 %  Each frog has its own colour and trail.
 % =========================================================
 
-clear; clc; close all;
-output_filename = "output/output.mat";
-update_figure = false;
-
-%% ---- PARAMETERS ----------------------------------------
-N        = 100;     % Grid size (N x N)
-T_steps  = 4*24*60/5;     % Number of time steps
-deltaT   = 5;       % Time step (minutes)
-T0       = 0;      % Start time (minutes since midnight) of the simulation
-month    = 'Jan';  % Month we are running the simulation in
-n_frogs  = 20;      % Number of frogs
-n_seeds  = 50;     % Seeds per habitat (controls patch size)
-pause_t  = 0.10;   % Pause between frames
-k_const  = 0.05790; % Thermal constant of frog (1/minutes) - for update_temp
-VTmax = 30; % Threshold of hot for cold
-VTmin = 20; % Threshold of cold for hot
-R_perc = 2;   % Perception radius (1=4 pixels, 2=12, 3=24, ...)
-              % pixels within Manhattan distance R form a diamond
-
-% ---- HABITAT PROPORTIONS (must sum to 1) ----------------
-hab_proportions = [0.1, 0.20, 0.50, 0.20];
-%                Rocks  DeepVeg  LightVeg  Pond
-% ----------------------------------------------------------
+% clear; clc; close all;
+% output_filename = "output/defaults.mat";
+% update_figure = false;
+% rng(6);
+% 
+% %% ---- PARAMETERS ----------------------------------------
+% N        = 100;     % Grid size (N x N)
+% T_steps  = 4*24*60/5;     % Number of time steps
+% deltaT   = 5;       % Time step (minutes)
+% T0       = 0;      % Start time (minutes since midnight) of the simulation
+% month    = 'Jan';  % Month we are running the simulation in
+% n_frogs  = 20;      % Number of frogs
+% n_seeds  = 50;     % Seeds per habitat (controls patch size)
+% pause_t  = 0.10;   % Pause between frames
+% k_const  = 0.05790; % Thermal constant of frog (1/minutes) - for update_temp
+% VTmax = 30; % Threshold of hot for cold
+% VTmin = 20; % Threshold of cold for hot
+% R_perc = 2;   % Perception radius (1=4 pixels, 2=12, 3=24, ...)
+%               % pixels within Manhattan distance R form a diamond
+% 
+% % ---- HABITAT PROPORTIONS (must sum to 1) ----------------
+% hab_proportions = [0.1, 0.20, 0.50, 0.20]; % defaults
+% % hab_proportions = [0.2, 0.3, 0.50, 0];
+% %                Rocks  DeepVeg  LightVeg  Pond
+% % ----------------------------------------------------------
 %% ---- MICROCLIMATE -----------------------------------------
 % Temperature profile using nichemapr given a location and month
 % latitude = -36.686844; longitude = 145.223311; month = "Jan";
@@ -349,7 +351,8 @@ end
 
 % -- Save outputs --
 params = struct("deltaT", deltaT, "T0", T0, "month", {month}, ...
-    "habitat_labels", hab_names, "VTmax", VTmax, "VTmin", VTmin, "R_perc", R_perc);
+    "habitat_labels", hab_names, "VTmax", VTmax, "VTmin", VTmin, ...
+    "habitat_proportions", hab_proportions, "R_perc", R_perc);
 habitat_temp_profile_hourly = table2array(T_hab_table);
 save(output_filename, "habitat", "habitat_temp_profile_hourly", "params", ...
     "output_habitats", "output_frog_temp", "output_locations");
