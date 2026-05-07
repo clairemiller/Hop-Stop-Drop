@@ -33,8 +33,11 @@ VTmax = 30; % Threshold of hot for cold
 VTmin = 20; % Threshold of cold for hot
 R_perc = 2;   % Perception radius (1=4 pixels, 2=12, 3=24, ...)
               % pixels within Manhattan distance R form a diamond
-% --------------------------------------------------------
 
+% ---- HABITAT PROPORTIONS (must sum to 1) ----------------
+hab_proportions = [0.1, 0.20, 0.50, 0.20];
+%                Rocks  DeepVeg  LightVeg  Pond
+% ----------------------------------------------------------
 %% ---- MICROCLIMATE -----------------------------------------
 % Temperature profile using nichemapr given a location and month
 % latitude = -36.686844; longitude = 145.223311; month = "Jan";
@@ -68,7 +71,7 @@ frog_colors = [
 frog_colors = frog_colors(mod((1:n_frogs)-1, size(frog_colors,1))+1, :);
 
 %% ---- BUILD HABITAT MAP ---------------------------------
-habitat = build_habitat(N, n_seeds);
+habitat = build_habitat(N, n_seeds, hab_proportions);
 
 % Build RGB image of the habitat (used as background)
 hab_rgb = zeros(N, N, 3);
@@ -494,14 +497,69 @@ end
 %  Uses random seeds + nearest-neighbour assignment
 %  to create natural, irregular habitat patches.
 % =========================================================
-function habitat = build_habitat(N, n_seeds)
-    seeds  = [randi(N, n_seeds*4, 1), randi(N, n_seeds*4, 1)];
-    labels = repelem(1:4, n_seeds)';
-    habitat = zeros(N,N);
+% function habitat = build_habitat(N, n_seeds)
+%     seeds  = [randi(N, n_seeds*4, 1), randi(N, n_seeds*4, 1)];
+%     labels = repelem(1:4, n_seeds)';
+%     habitat = zeros(N,N);
+%     for i = 1:N
+%         for j = 1:N
+%             [~, best]    = min((seeds(:,1)-i).^2 + (seeds(:,2)-j).^2);
+%             habitat(i,j) = labels(best);
+%         end
+%     end
+% end
+
+function habitat = build_habitat(N, n_seeds, proportions)
+% Inputs:
+%   N            – grid size (N x N)
+%   n_seeds      – total number of Voronoi seeds
+%   proportions  – vector of length 4 with habitat fractions (must sum to 1)
+%                  Use 0.0 to completely exclude a habitat
+
+    % Validate proportions
+    assert(abs(sum(proportions) - 1.0) < 1e-6, ...
+        'ERROR: hab_proportions must sum to 1.0 (current sum = %.4f)', ...
+        sum(proportions));
+    assert(all(proportions >= 0), ...
+        'ERROR: all proportions must be >= 0');
+
+    % Number of seeds per habitat — habitats with proportion 0 get 0 seeds
+    seeds_per_hab = zeros(1, 4);
+    active = proportions > 0;                        % which habitats are active
+    seeds_per_hab(active) = max(1, round(proportions(active) * n_seeds));
+
+    % Build seed list
+    n_total   = sum(seeds_per_hab);
+    seed_rows = randi(N, n_total, 1);
+    seed_cols = randi(N, n_total, 1);
+    labels    = repelem(1:4, seeds_per_hab)';
+
+    % Nearest-neighbour assignment (Voronoi)
+    habitat = zeros(N, N);
     for i = 1:N
         for j = 1:N
-            [~, best]    = min((seeds(:,1)-i).^2 + (seeds(:,2)-j).^2);
+            [~, best]    = min((seed_rows - i).^2 + (seed_cols - j).^2);
             habitat(i,j) = labels(best);
         end
     end
+
+    % Report actual habitat coverage
+    hab_names = {'Rocks', 'Deep Veg', 'Light Veg', 'Pond'};
+    fprintf('\n=== HABITAT COVERAGE ===\n');
+    fprintf('%-16s  %10s  %10s\n', 'Habitat', 'Target', 'Actual');
+    fprintf('%s\n', repmat('-', 1, 40));
+    for h = 1:4
+        actual = sum(habitat(:) == h) / N^2;
+        if proportions(h) == 0
+            fprintf('%-16s  %9s%%  %9.1f%%  WARNING: should be 0!\n', ...
+                hab_names{h}, '0.0', actual * 100);
+        else
+            fprintf('%-16s  %9.1f%%  %9.1f%%\n', ...
+                hab_names{h}, proportions(h)*100, actual*100);
+        end
+    end
+    fprintf('%s\n', repmat('-', 1, 40));
+    fprintf('%-16s  %9.1f%%  %9.1f%%\n', 'TOTAL', ...
+        sum(proportions)*100, sum(habitat(:)>0)/N^2*100);
+    fprintf('\n');
 end
